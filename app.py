@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Nifty OptionFlow", layout="wide")
+st.set_page_config(page_title="OptionFlow Nifty", layout="wide")
 
 SYMBOL = "NIFTY"
 
@@ -86,7 +86,6 @@ def process_data(data, target_expiry):
         return None, underlying_value
     
     atm_strike = round(underlying_value / 50) * 50
-    # Filter strictly to 11 strikes (+/- 250 points from ATM)
     df_filtered = df[(df['strikePrice'] >= atm_strike - 250) & (df['strikePrice'] <= atm_strike + 250)].copy()
     
     return df_filtered, underlying_value
@@ -166,7 +165,31 @@ def analyze_market(df, underlying, support, resistance):
         elif pe_chng > ce_chng and pe_vol > ce_vol:
             atm_action = {"trend": "SUPPORT ↗", "reason": f"ATM ({atm_strike}): Strong Put writing. Immediate support building."}
 
-    return overall, sr_action, atm_action
+    # --- 4. ALGORITHMIC RECOMMENDATION (WEIGHTED SCORING) ---
+    bull_score = 0
+    bear_score = 0
+    
+    # Weight 1: Overall Trend
+    if "BULLISH" in overall['trend']: bull_score += 1
+    elif "BEARISH" in overall['trend']: bear_score += 1
+        
+    # Weight 2: S/R Boundary Confluence
+    if "↗" in sr_action['trend']: bull_score += 1
+    elif "↘" in sr_action['trend']: bear_score += 1
+        
+    # Weight 3: ATM Immediate Action (Double Weight for execution timing)
+    if "↗" in atm_action['trend']: bull_score += 2
+    elif "↘" in atm_action['trend']: bear_score += 2
+
+    # Final Decision
+    recommendation = {"action": "WAIT ⏳", "reason": "Signals are conflicting or purely sideways. Capital preservation is advised."}
+    
+    if bull_score >= 3:
+        recommendation = {"action": "LONG 🚀", "reason": "Strong bullish confluence across ATM momentum and broader Option Chain."}
+    elif bear_score >= 3:
+        recommendation = {"action": "SHORT 🩸", "reason": "Strong bearish confluence across ATM momentum and broader Option Chain."}
+
+    return overall, sr_action, atm_action, recommendation
 
 # --- PLOTLY CHART HELPER ---
 def create_bar_chart(df, ce_col, pe_col, title, atm_strike):
@@ -226,7 +249,7 @@ with settings_col:
         st.caption(f"Next refresh in {refresh_rate} seconds...")
 
 with title_col:
-    st.title("Nifty OptionFlow")
+    st.title("🌊 Nifty OptionFlow")
     st.caption("*Live OI, Volume & Breakout Intelligence*")
     
     current_time = datetime.now().strftime("%I:%M:%S %p")
@@ -239,30 +262,25 @@ if df is not None and not df.empty:
     
     atm_strike = round(current_price / 50) * 50
     
-    # --- MAJOR vs IMMEDIATE S/R LOGIC ---
     # Major (Max OI) Support & Resistance
     support_max = df.loc[df['PE_OI'].idxmax()]['strikePrice']
     resistance_max = df.loc[df['CE_OI'].idxmax()]['strikePrice']
     
     # Immediate (Near ATM) Support & Resistance
-    # Nearest support is the highest strike <= current price
     sup_near_df = df[df['strikePrice'] <= current_price]
     support_near = sup_near_df['strikePrice'].max() if not sup_near_df.empty else support_max
     
-    # Nearest resistance is the lowest strike >= current price
     res_near_df = df[df['strikePrice'] >= current_price]
     resistance_near = res_near_df['strikePrice'].min() if not res_near_df.empty else resistance_max
 
     max_pain = calculate_max_pain(df)
     
-    # We pass the Major levels (Max OI) for structural boundary intelligence
-    overall, sr_action, atm_action = analyze_market(df, current_price, support_max, resistance_max)
+    # Process market logic including the new recommendation
+    overall, sr_action, atm_action, recommendation = analyze_market(df, current_price, support_max, resistance_max)
     
-    # Format strings to show 1 or 2 targets depending on overlap
     sup_display = f"{support_near:,.0f} / {support_max:,.0f}" if support_near != support_max else f"{support_max:,.0f}"
     res_display = f"{resistance_near:,.0f} / {resistance_max:,.0f}" if resistance_near != resistance_max else f"{resistance_max:,.0f}"
     
-    # --- UI METRICS ---
     st.subheader("Market Dynamics")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -273,6 +291,15 @@ if df is not None and not df.empty:
     
     st.markdown("### 🧭 Trading Insights")
     
+    # --- RECOMMENDATION BANNER ---
+    if "LONG" in recommendation['action']:
+        st.success(f"### 🟢 RECOMMENDATION: {recommendation['action']}\n{recommendation['reason']}")
+    elif "SHORT" in recommendation['action']:
+        st.error(f"### 🔴 RECOMMENDATION: {recommendation['action']}\n{recommendation['reason']}")
+    else:
+        st.warning(f"### 🟡 RECOMMENDATION: {recommendation['action']}\n{recommendation['reason']}")
+    
+    # --- WIDGET-STYLE INSIGHT CARDS ---
     insight_col1, insight_col2, insight_col3 = st.columns(3)
     
     def get_trend_color(trend_text):
@@ -327,7 +354,6 @@ if df is not None and not df.empty:
         
         def highlight_strikes(row):
             sp = row['strikePrice']
-            # Highlight ALL significant levels (Near and Max)
             if sp == support_max or sp == support_near:
                 return ['background-color: rgba(39, 174, 96, 0.35)'] * len(row)  
             elif sp == resistance_max or sp == resistance_near:
