@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="OptionFlow Nifty", layout="wide")
+st.set_page_config(page_title="Nifty OptionFlow", layout="wide")
 
 SYMBOL = "NIFTY"
 

@@ -1,4 +1,4 @@
-# 🌊 OptionFlow Nifty | Live OI, Volume & Breakout Intelligence
+# 🌊 Nifty OptionFlow | Live OI, Volume & Breakout Intelligence
 
 A real-time, interactive Streamlit dashboard that fetches live Option Chain data directly from the National Stock Exchange (NSE) of India. The application bypasses basic bot protections to deliver live insights, visual data graphs, and automated trading signals based on Open Interest (OI) and Volume dynamics.
 
